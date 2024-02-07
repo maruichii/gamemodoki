@@ -12,7 +12,7 @@ const RES_TEXT = {
         Speaker: (id) => { return SCRIPT[id].map((s) => s.text) },
         Chara: (id) => { return SCRIPT[id].map((s) => s.chara) },
         TextSpeaker: (id) => { return SCRIPT[id].map((s) => ({ text:s.text, speaker:s.speaker })) }
-    },
+    }
 }
 
 const TEXT = {
@@ -47,7 +47,7 @@ const SCRIPT = {
             ],
         },
         {
-            text: "これは地の文。",
+            text: "これは地の文。\nめちゃくちゃ長い文章とかちゃんと右端で折り返しできるんだろうか。1年も前のことだからもう分からない。多分できない気がする。\nできたわ。",
             speaker: null,
             chara: [
                 { id: "テスト子", spriteId: "chara1", scale: 1.0, x: "left", y: 100, z: 0, face: FACE_ID.DEFAULT, animation: null},

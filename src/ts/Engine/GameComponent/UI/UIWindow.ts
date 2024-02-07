@@ -1,10 +1,21 @@
+import * as Util from '../../../Util/Util';
+
 import { gsap } from "gsap";
 import * as PIXI from 'pixi.js';
+import { ScrollBox } from '@pixi/ui';
+
 import { PixiPlugin } from "gsap/PixiPlugin";
-import { IGameComponent, IContentComponent, ISteppableComponent, ISteppableComponentDelegate, IGameComponentDelegate } from '../../Core/IGameComponent';
+import { IGameComponent, IContentComponent, ISteppableComponent, ISteppableComponentDelegate, IGameComponentDelegate, IScrollableViewport, GameComponent, GameComponentState, ISequenceActor } from '../../Core/IGameComponent';
 import { ITweenPIXIGraphics } from '../../Core/ITweenDisplayObject';
 import { Game } from "../../Core/Game";
 import RText from 'RText';
+// import { } from "ts/Repository/SequenceRepository";
+import { ScriptText, TextParam, Sequence, REF_TYPE  } from 'ts/Repository/EventRepository';
+import { FlagManager } from 'ts/Engine/Core/FlagManager';
+import { ParameterManager } from 'ts/Engine/Core/ParameterManager';
+import { Subject } from 'rxjs';
+import { GameSound } from 'ts/Engine/GameComponent/GameSound';
+import { SystemDataManager } from 'ts/Engine/Core/SystemDataManager';
 
 // register the plugin
 gsap.registerPlugin(PixiPlugin);
@@ -12,8 +23,12 @@ gsap.registerPlugin(PixiPlugin);
 PixiPlugin.registerPIXI(PIXI);
 
 
+
+
+
 /**
  * UIウィンドウ基底クラス
+ * ※四角の中にテキストが表示されるもの全般
  * コンストラクタ引数 {
  *   width:     テキストウィンドウ幅
  *   height:    テキストウィンドウ高さ
@@ -22,14 +37,18 @@ PixiPlugin.registerPIXI(PIXI);
  *   textStyle: テキストのスタイル(PIXI.TextStyle)
  * }
  */
-export class UIWindow implements IGameComponent, IContentComponent {
+export class UIWindow extends GameComponent implements IContentComponent {
 
-    public objectLabel: string = '';
+    public _delegate: IGameComponentDelegate;
+
+    // public objectLabel: string = '';
     public renderObject: PIXI.Container;
+    public isReservingDelete: boolean;
+
     protected window: PIXI.Graphics;
 
     public textStyle? : PIXI.TextStyle;
-    public backgroundColor: number;
+    public backgroundColor: string;
 
     public width: number;
     public height: number;
@@ -43,6 +62,7 @@ export class UIWindow implements IGameComponent, IContentComponent {
     public bottom: number;
 
     constructor (c? : Partial<UIWindow>) {
+        super();
         Object.assign(this, c);
         this.renderObject = new PIXI.Container();
     } 
@@ -76,6 +96,9 @@ export class UIWindow implements IGameComponent, IContentComponent {
         else if (this.bottom != undefined) {
             this.renderObject.y = game.height - (this.height + this.bottom);
         }
+        
+        this.rawX = this.renderObject.x;
+        this.rawY = this.renderObject.y;
 
         // ウィンドウ
         let window = new PIXI.Graphics()
@@ -101,19 +124,30 @@ export class UIWindow implements IGameComponent, IContentComponent {
     public async doFixedUpdate(): Promise<void> {
         return null;
     }
+    
+    public async afterUpdate(): Promise<void> {
+        return;
+    }
 
-    public render(): void {
+    public renderComponent(): void {
         return null;
     }
 
-    public destroy(): void {
+    public die(): Promise<void> {
+        this._delegate = null;
         return null;
     }   
+
+    public setDelegate(d: IGameComponentDelegate) {
+        this._delegate = d;   
+    }
 }
 
 
 /**
  * テキストウィンドウクラス
+ * イベントにおける一連のテキスト表示を制御する
+ * ISteppableComponentを実装し、イベントを進める(stepNext())トリガーは外部に委譲する
  * コンストラクタ引数 {
  *   id:        テキストのid
  *   textSpeed: テキスト送りの速度
@@ -126,22 +160,25 @@ export class UIWindow implements IGameComponent, IContentComponent {
  */
 
 
-export class TextWindow extends UIWindow implements ISteppableComponent {
+export class SequencialTextWindow extends UIWindow implements ISteppableComponent {
+    public isWaitNext: boolean;
     public textSpeed: number;
     public gameComponentDelegate?: IGameComponentDelegate;
     public steppableComponentDelegate?: ISteppableComponentDelegate;
     
-    protected _textSequence: string[] = [];
+    protected _scriptTextSequence: Array<ScriptText> = new Array<ScriptText>();
+
     protected _currentText: string;
-    protected _isWaitNext: boolean;
     protected _textCursor: number;
-    protected _charCursor: Generator<unknown, any, unknown>;
+    protected _charCursor: Generator<unknown, any, unknown>;    // 文字カーソル
     protected _prevFrame: number;
 
     // DisplayObject
     protected _textLabel: PIXI.Text;
     protected _btnNextMsg: PIXI.Graphics;
     protected _btnCloseWindow: PIXI.Graphics;  
+
+    protected _completeSubject = new Subject<void>();
 
 
     constructor (c? : Partial<SerifWindow>) {
@@ -157,29 +194,42 @@ export class TextWindow extends UIWindow implements ISteppableComponent {
     }
 
     public async init():Promise<void> {
+        this.state = GameComponentState.init;   // 準備未完了
         this.initElement();
+        
+        // this._btnCloseWindow.addEventListener('pointertap', () => {
+        //     this.die();
+        // })
     }
 
     public async start():Promise<void> {
-        this.stepNext();
+       
     }
 
     protected initElement():void {
         super.initElement();
 
         // テキストスタイル
-        if (!this.textStyle.wordWrapWidth) {
+        if (this.textStyle.wordWrapWidth == undefined || this.textStyle.wordWrapWidth == null) {
+            // 改行規則
             this.textStyle.wordWrapWidth = (this.textStyle.fontSize as number) 
-                ? this.width - (this.textStyle.fontSize as number)
+                ? this.width - (this.textStyle.fontSize as number) * 1.5
                 : this.width - 16;
         }
+
+        this.textStyle.align = 'left';
 
         // テキストラベル
         let textLabel = new PIXI.Text( '', this.textStyle );
         textLabel.x = 0;
         textLabel.y = 0;
-        textLabel.x = (this.textStyle.fontSize as number) ?  (this.textStyle.fontSize as number) * 0.5 : 16 * 0.5;
-        textLabel.y = this.textStyle.lineHeight ? this.textStyle.lineHeight * 1.5 : 16;
+        // 左端 padding 0.5em
+        // textLabel.x = (this.textStyle.fontSize as number) ?  (this.textStyle.fontSize as number) * 0.5 : 16 * 0.5;
+        // 左端 padding 1em
+        textLabel.x = (this.textStyle.fontSize as number) ?  (this.textStyle.fontSize as number) * 1.0 : 16 * 1.0;
+        // textLabel.y = this.textStyle.lineHeight ? this.textStyle.lineHeight * 1.5 : 16; 
+        // 必ず文頭に1行余計に入るので
+        textLabel.y = this.textStyle.lineHeight ? this.textStyle.lineHeight * -0.25 : -8; ; 
         textLabel.visible = true;
 
         // テキスト送りボタン
@@ -226,14 +276,14 @@ export class TextWindow extends UIWindow implements ISteppableComponent {
         this.window.interactive = true;
         textLabel.interactive = true;
         btnNextMsg.interactive = true;
-        btnNextMsg.buttonMode = true;
+        btnNextMsg.cursor = 'pointer';
 
         this.window.on('pointertap', this.onTap.bind(this));
         textLabel.on('pointertap', this.onTap.bind(this));
         btnNextMsg.on('pointertap', this.onTap.bind(this));
 
         btnCloseWindow.interactive = true;
-        btnCloseWindow.buttonMode = true;
+        btnCloseWindow.cursor = 'pointer';
 
         // 子要素をthisで持つ
         this._textLabel = textLabel;
@@ -251,42 +301,86 @@ export class TextWindow extends UIWindow implements ISteppableComponent {
 
 
     /**
-     * 一連の文章をセット
+     * 一連の文章をセット(HACK: このクラスではspeakerは使わないけどScriptText型でセットしちゃう)
      */
-    public setTextSequence(textSequence: string[]): void {
-        this._textSequence = textSequence;
+    public async setSequence(sequence: Sequence): Promise<void>{
+        // HACK: くそ
+        let scriptTextSequence = sequence.map((s) => {
+            return {text: s.text, textParams: s.textParams, speaker: s.speaker} as ScriptText;
+        });
+        this._scriptTextSequence = scriptTextSequence;
         this._textCursor = 0;
+        this.state = GameComponentState.ready;   // 準備完了
     }
 
     /**
      * 本文表示処理本体
      */
     public async doUpdate(): Promise<void> {
-        let isElapsedTargetTime =  Game.currentTime - this._prevFrame >  this.textSpeed;
+        const elapsedTime = Game.currentTime - this._prevFrame;
+        let isElapsedTargetTime =  elapsedTime >  this.textSpeed;
+        // console.log('KeyPress:' + Game.getKey('KeyZ'));
+        // console.log('KeyDown:' + Game.getKeyDown('KeyZ'));
+        // console.log('KeyDuration:' + Game.getKeyPressDuration('KeyZ'));
         if (Game.getKeyDown('KeyZ') == 1) {
             this.onTap(null);
         }
-        else if ( isElapsedTargetTime && !this._isWaitNext && this._charCursor != null ) {
+        else if (Game.getKey('KeyZ') == 1 && Game.getKeyPressDuration('KeyZ') > 300) {
+            this.onTap(null);
+        }
+        else if ( isElapsedTargetTime && !this.isWaitNext && this._charCursor != null ) {
             // 一定時間経過 かつ テキスト送り待ちでなければ 次の文字を表示する
             this.stream();
             this._prevFrame = Game.currentTime;
         }
     }
 
+
     /**
      * 次の1文へ
      */
-    public stepNext():void {
+    public async stepNext(): Promise<void> {
         // あとになければなにもしない
         if (!this.checkIsSequenceEnd()) {
             this._textLabel.text = "";
-            this._currentText  = ' ' + this._textSequence[this._textCursor]; // 1文字目の待機用に空白をいれる
+            SystemDataManager.instance.sysdata.backlog.push({speaker: null, text: this._scriptTextSequence[this._textCursor].text});     //バックログ
+            this._currentText  = '\n' + this._scriptTextSequence[this._textCursor].text; // 1文字目の待機用に空白をいれる
+
+            // パラメーター置換
+            if (Array.isArray(this._scriptTextSequence[this._textCursor].textParams)) {
+                Array.prototype.forEach.call(this._scriptTextSequence[this._textCursor].textParams, (param, index) => {
+                    let replaceStr = '';
+                    switch(param.type) {
+                        case REF_TYPE.FLAG :
+                            replaceStr = FlagManager.instance.getFlag(param.target) ? 'TRUE' : 'FALSE';
+                            break;
+                        case REF_TYPE.PARAM :
+                            replaceStr = ParameterManager.instance.getParam(param.target, param.targetProperty);
+                            break;
+
+                            // その他の型
+                        default:
+                            break;
+                    }
+
+                    const placeholder =  new RegExp(`{{${index}}}}`, 'g');
+                    this._currentText =  this._currentText.replace(placeholder, replaceStr);
+                });
+            }
+
             this._charCursor = this.getNextCharGenerator();
             this._btnNextMsg.visible = false;
-            this._isWaitNext = false;
+            this.isWaitNext = false;
+            if (this.steppableComponentDelegate != null) {
+                this.steppableComponentDelegate.isWaitNext = false;
+            }
 
             this.stream();
             this._textCursor++;
+        }
+
+        else {
+            this.finishSequence();
         }
     }
 
@@ -300,10 +394,14 @@ export class TextWindow extends UIWindow implements ISteppableComponent {
         if (!n.done) {
             // 1文字追加
             this._textLabel.text += n.value;
+            this.playSe();
         }
-        else if (this._isWaitNext == false) {
+        else if (this.isWaitNext == false) {
             // 文末かつflush()してない
-            this._isWaitNext = true;
+            this.isWaitNext = true;
+            if (this.steppableComponentDelegate != null) {
+                this.steppableComponentDelegate.isWaitNext = true;
+            }
             this._btnNextMsg.visible = true;
         }
         else {
@@ -325,10 +423,17 @@ export class TextWindow extends UIWindow implements ISteppableComponent {
     /**
      * 一括表示
      */
-    public flush():void {
+    public async flushCurrent(): Promise<void> {
         this._textLabel.text  = this._currentText;
-        this._isWaitNext = true;
+        this.isWaitNext = true;
         this._btnNextMsg.visible = true;
+
+        // console.log(this.renderObject.getBounds());
+        // console.log('テキストラベル位置');
+        // console.log(this._textLabel.x);
+        // console.log(this._textLabel.y);
+        // console.log(this._textLabel.anchor);
+
         this.checkIsSequenceEnd();
     }
 
@@ -336,15 +441,32 @@ export class TextWindow extends UIWindow implements ISteppableComponent {
      * 文章配列の末尾か判定
      */
     protected checkIsSequenceEnd(): boolean {
-        if ( this._textSequence[this._textCursor] === undefined) {
+        if ( this._scriptTextSequence[this._textCursor] === undefined || 
+            this._scriptTextSequence[this._textCursor].text === undefined) {
             // テキストが終わりなら閉じる待機
             this._btnNextMsg.visible = false;
             this._btnCloseWindow.visible = true;
             return true;    
         }
         else {
+            this._btnNextMsg.visible = true;
+            this._btnCloseWindow.visible = false;
             return false;
         }
+    }
+
+
+    /**
+     * 一連の文章表示完了処理
+     */
+    protected finishSequence() {
+        this._completeSubject.complete();
+    }
+
+
+
+    protected async playSe(): Promise<void> {
+        return;
     }
 
 
@@ -361,11 +483,13 @@ export class TextWindow extends UIWindow implements ISteppableComponent {
 
     public onNext(): void {
         if (this.steppableComponentDelegate) {
-            this._isWaitNext ? this.steppableComponentDelegate.handleNext() : this.flush();
+            // デリゲートがあるならば任せる
+            // this.steppableComponentDelegate.isWaitNext ? this.steppableComponentDelegate.handleNext() : this.flush();    // flushも上から呼ぶ
+            this.steppableComponentDelegate.handleNext({sound: true});
         }
         else {
             // 表示が完了していれば次の文章へ、そうでなければ一括表示
-            this._isWaitNext ? this.stepNext() : this.flush();
+            this.isWaitNext ? this.stepNext() : this.flushCurrent();
         }
     }
 
@@ -374,6 +498,9 @@ export class TextWindow extends UIWindow implements ISteppableComponent {
 
 /**
  * 会話ウィンドウクラス
+ * イベント(会話)における一連のテキスト表示を制御する
+ * ISteppableComponentを実装し、イベントを進める(stepNext())トリガーは外部に委譲する
+ * 
  * コンストラクタ引数 {
  *   id:        テキストのid
  *   textSpeed: テキスト送りの速度
@@ -384,10 +511,10 @@ export class TextWindow extends UIWindow implements ISteppableComponent {
  *   textStyle: テキストのスタイル(PIXI.TextStyle)
  * }
  */
-export class SerifWindow extends TextWindow implements ISteppableComponent {
+export class SerifWindow extends SequencialTextWindow implements ISteppableComponent, ISequenceActor {
 
-    protected _speaker: string;
-    protected _speakerSequence: string[];
+    // protected _speaker: string;
+    // protected _speakerSequence: string[];
 
     // DisplayObject
     protected _speakerFrame: PIXI.Graphics;
@@ -407,7 +534,7 @@ export class SerifWindow extends TextWindow implements ISteppableComponent {
         speakerTextStyle.strokeThickness = 0;
         speakerTextStyle.fontSize = Math.trunc(Number(speakerTextStyle.fontSize) * 0.8);
 
-        let speakerLabel = new PIXI.Text( '', speakerTextStyle);
+        let speakerLabel = new PIXI.Text( '', {...speakerTextStyle, ...{fill: '#333333', strokeThickness: 0}});
         speakerLabel.x = 50 + 60;
         speakerLabel.y = -14;
         speakerLabel.visible = true;
@@ -435,29 +562,25 @@ export class SerifWindow extends TextWindow implements ISteppableComponent {
 
 
     /**
-     * 一連の文章をセット
-     */
-     public setScriptSequence(textSequence: string[], speakerSequence: string[]): void {
-        this._speakerSequence = speakerSequence;    
-        this.setTextSequence(textSequence);
-    }
-
-
-    /**
-    * 次の1文へ
+    * 次の1文へ TODO: 親クラスと処理重複してるのがひどい
     */
-    public stepNext(): void {
-       // あとになければなにもしない
-       if (!this.checkIsSequenceEnd()) {
+    public async stepNext(): Promise<void> {
+        // あとになければなにもしない
+        if (!this.checkIsSequenceEnd()) {
+
+            SystemDataManager.instance.sysdata.backlog.push({
+                    speaker: this._scriptTextSequence[this._textCursor].speaker, 
+                    text: this._scriptTextSequence[this._textCursor].text
+            });     //バックログ
            
            // 話者ラベル表示設定
-           if ( this._speakerSequence[this._textCursor] != null) {
-               this._speakerLabel.text = this._speakerSequence[this._textCursor]; 
+           if ( this._scriptTextSequence[this._textCursor].speaker != null && this._scriptTextSequence[this._textCursor].speaker != undefined) {
+                this._speakerLabel.text = this._scriptTextSequence[this._textCursor].speaker; 
 
-               this._speakerLabel.visible = true;
-               this._speakerFrame.visible = true;
+                this._speakerLabel.visible = true;
+                this._speakerFrame.visible = true;
 
-               this._speakerLabel.x = this._speakerFrame.x + (this._speakerFrame.width - this._speakerLabel.width) / 2;
+                this._speakerLabel.x = this._speakerFrame.x + (this._speakerFrame.width - this._speakerLabel.width) / 2;
            }
            else {
                this._speakerLabel.text = '';
@@ -465,13 +588,119 @@ export class SerifWindow extends TextWindow implements ISteppableComponent {
                this._speakerFrame.visible = false;
            }
            this._textLabel.text = "";
-           this._currentText  = ' ' + this._textSequence[this._textCursor]; // 1文字目の待機用に空白をいれる
-           this._charCursor = this.getNextCharGenerator();
-           this._btnNextMsg.visible = false;
-           this._isWaitNext = false;
+           this._currentText  = '\n' + this._scriptTextSequence[this._textCursor].text; // 1文字目の待機用に空白をいれる
 
-           this.stream();
-           this._textCursor++;
-       }
-   }
+           // パラメーター置換
+           if (Array.isArray(this._scriptTextSequence[this._textCursor].textParams)) {
+            Array.prototype.forEach.call(this._scriptTextSequence[this._textCursor].textParams, (param, index) => {
+                let replaceStr = '';
+                switch(param.type) {
+                    case REF_TYPE.FLAG :
+                        replaceStr = FlagManager.instance.getFlag(param.target) ? 'TRUE' : 'FALSE';
+                        break;
+                    case REF_TYPE.PARAM :
+                        replaceStr = ParameterManager.instance.getParam(param.target, param.targetProperty);
+                        break;
+
+                        // その他の型
+                    default:
+                        break;
+                }
+
+                // const placeholder =  new RegExp(`{{${index}}}}`, 'g');
+                const placeholder =  '{{' + index + '}}';
+                this._currentText =  this._currentText.replace(placeholder, replaceStr);
+            });
+        }
+
+
+            this._charCursor = this.getNextCharGenerator();
+            this._btnNextMsg.visible = false;
+            this.isWaitNext = false;
+            if (this.steppableComponentDelegate != null) {
+                this.steppableComponentDelegate.isWaitNext = false;
+            }
+
+            this.stream();
+            this._textCursor++;
+        }
+
+        else {
+            this.finishSequence();
+        }
+    }
+
+    protected async playSe(): Promise<void> {
+        if (this._speakerLabel.text != '' && this._speakerLabel.text != null) {
+            let sound: GameSound;
+            if (this._speakerLabel.text == '少女' || this._speakerLabel.text == '早希' || this._speakerLabel.text == '？？？') {
+                sound = await GameSound.build('se_talk', {
+                    volume: 1.15
+                });
+            }
+            else {
+                sound = await GameSound.build('se_talk2', {
+                    volume: 0.75
+                });
+            }
+            sound.play();
+        }
+    }
+
 }
+
+
+
+// /**
+//  * スクロール可能なウィンドウクラス  → @pixi/ui ScrollBox で代用
+//  */
+// export class ScrollableWindow implements IGameComponent, IScrollableViewport {
+    
+//     objectLabel: string;
+//     renderObject: PIXI.DisplayObject;
+//     gameComponentDelegate?: IGameComponentDelegate;
+//     innerContainer: PIXI.Container<PIXI.DisplayObject>;
+//     displayArea: PIXI.MaskData;
+
+//     onWheel(): void {
+//         throw new Error("Method not implemented.");
+//     }
+//     onDragStart(): void {
+//         throw new Error("Method not implemented.");
+//     }
+//     onDragging(): void {
+//         throw new Error("Method not implemented.");
+//     }
+//     onDragEnd(): void {
+//         throw new Error("Method not implemented.");
+//     }
+//     render(): void {
+//         throw new Error("Method not implemented.");
+//     }
+//     init(): Promise<void> {
+//         throw new Error("Method not implemented.");
+//     }
+//     start(): Promise<void> {
+//         throw new Error("Method not implemented.");
+//     }
+//     doUpdate(): Promise<void> {
+//         throw new Error("Method not implemented.");
+//     }
+//     doFixedUpdate(): Promise<void> {
+//         throw new Error("Method not implemented.");
+//     }
+//     destroy(): void {
+//         throw new Error("Method not implemented.");
+//     }
+//     setGameComponentDelegate?(delegate: IGameComponentDelegate): void {
+//         throw new Error("Method not implemented.");
+//     }
+//     onTap?(e: PIXI.FederatedPointerEvent): void {
+//         throw new Error("Method not implemented.");
+//     }
+//     onClose?(): void {
+//         throw new Error("Method not implemented.");
+//     }
+   
+    
+// }

@@ -5,9 +5,11 @@
     // "module": "ES2015", // TSのモジュールはES Modulesとして出力
     "module": "esnext", 
     "moduleResolution": "node",
-    "baseUrl": "./",
+    "baseUrl": "./src",
     "typeRoots" : ["./src/@types"],
     "allowSyntheticDefaultImports": true,
+    // Required for importing 3rd-party dependencies like EventEmitter3
+    "esModuleInterop": true
   },
   
 }

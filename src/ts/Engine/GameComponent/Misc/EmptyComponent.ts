@@ -1,5 +1,5 @@
 import * as PIXI from 'pixi.js';
-import { IGameComponent } from "../../Core/IGameComponent";
+import { GameComponentState, IGameComponent, IGameComponentDelegate } from "../../Core/IGameComponent";
 
 export class EmptyComponent implements IGameComponent {
     objectLabel: string = '';
@@ -10,8 +10,43 @@ export class EmptyComponent implements IGameComponent {
 
         this.renderObject = new PIXI.Container();
     }
+    rawX: number;
+    rawY: number;
+    x: number;
+    y: number;
+    xOffset: number;
+    yOffset: number;
+    updateX() {
+        throw new Error('Method not implemented.');
+    }
+    updateY() {
+        throw new Error('Method not implemented.');
+    }
+    gameComponentDelegate?: IGameComponentDelegate;
+    state: GameComponentState;
+    afterUpdate(): Promise<void> {
+        throw new Error('Method not implemented.');
+    }
+    die(): Promise<void> {
+        throw new Error('Method not implemented.');
+    }
+    suspend(): void {
+        throw new Error('Method not implemented.');
+    }
+    resume(): void {
+        throw new Error('Method not implemented.');
+    }
+    setGameComponentDelegate?(delegate: IGameComponentDelegate): void {
+        throw new Error('Method not implemented.');
+    }
+    onTap?(e: PIXI.FederatedPointerEvent): void {
+        throw new Error('Method not implemented.');
+    }
+    onClose?(): void {
+        throw new Error('Method not implemented.');
+    }
 
-    render(): void {
+    renderComponent(): void {
         return ;
     }
     init(): Promise<void> {
@@ -26,8 +61,4 @@ export class EmptyComponent implements IGameComponent {
     doFixedUpdate(): Promise<void> {
         return ;
     }
-    destroy(): void {
-        return ;
-    }
-
 }

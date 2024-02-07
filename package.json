@@ -2,31 +2,45 @@
   "name": "dev",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "set NODE_OPTIONS=--openssl-legacy-provider && electron .",
+    "build": "set NODE_OPTIONS=--openssl-legacy-provider && electron-packager . --overwrite",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "generate": "set NODE_OPTIONS=--openssl-legacy-provider"
   },
   "author": "",
   "license": "ISC",
-  "devDependencies": {
+  "dependencies": {
     "@babel/core": "^7.17.0",
     "@babel/plugin-syntax-dynamic-import": "^7.2.0",
     "@babel/polyfill": "^7.12.1",
     "@babel/preset-env": "^7.16.11",
     "babel-loader": "^8.2.3",
     "baguettebox.js": "^1.11.1",
-    "css-loader": "^2.1.1",
+    "css-loader": "^6.8.1",
+    "electron": "^25.0.1",
+    "electron-packager": "^17.1.1",
     "gsap": "^3.9.1",
-    "mini-css-extract-plugin": "^0.6.0",
-    "npm-check-updates": "^12.2.1",
-    "pixi-sound": "^3.0.5",
-    "pixi-spine": "^3.0.13",
-    "pixi.js": "^6.3.0",
-    "sass-loader": "^7.1.0",
+    "mini-css-extract-plugin": "^2.7.6",
+    "npm": "^9.6.7",
+    "npm-check-updates": "^16.13.2",
+    "sass-loader": "^13.3.2",
     "style-loader": "^0.23.1",
     "ts-loader": "^6.2.2",
-    "typescript": "^3.9.10",
-    "webpack": "^4.46.0",
-    "webpack-cli": "^3.3.12"
+    "typescript": "^5.2.2",
+    "webpack": "^5.88.2",
+    "webpack-cli": "^5.1.4"
+  },
+  "devDependencies": {
+    "@pixi/extensions": "^7.3.1",
+    "@pixi/interaction": "^5.3.2",
+    "@pixi/sound": "^5.2.1",
+    "@pixi/ui": "^0.9.0",
+    "lodash": "^4.17.21",
+    "pixi-spine": "^4.0.4",
+    "pixi.js": "^7.3.1",
+    "rxjs": "^7.8.1",
+    "webfontloader": "^1.6.28"
   }
 }

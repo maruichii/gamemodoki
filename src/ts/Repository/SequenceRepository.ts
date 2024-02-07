@@ -1,15 +1,15 @@
 import RText from  'RText';
 import { IRepository } from './IRepository';
 
-type Sequence = Array<Script>;
+export type Sequence = Array<Script>;
 
-type Script =  {
+export type Script =  {
     text? :string,
     speaker? :string,
     chara :Array<ScriptCharaConfig>
 }
 
-type ScriptCharaConfig = {
+export type ScriptCharaConfig = {
     sprite? :string,
     x? :any,
     y? :any,

@@ -39,6 +39,7 @@ module.exports = {
         extensions: [
           '.ts', '.js',
         ],
+        modules: [path.resolve(__dirname, './src'), 'node_modules'],
     },
 
     plugins: [
@@ -57,6 +58,9 @@ module.exports = {
     //   ]
     externals: {
         RSprite: 'RES_SPRITE',
+        RSound: 'RES_SOUND',
         RText: 'RES_TEXT',
+        REvent: 'RES_EVENT',
+        RData: 'RES_DATA',
     },
 };
