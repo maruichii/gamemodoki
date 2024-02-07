@@ -31993,7 +31993,7 @@ var Game = /*#__PURE__*/function () {
       });
       this.sceneList = new Map(); // シーンリスト初期化
       this.activeScene = null;
-      this._loadingScreen = pixi_js__WEBPACK_IMPORTED_MODULE_1__.Sprite.from('/loading.png');
+      this._loadingScreen = pixi_js__WEBPACK_IMPORTED_MODULE_1__.Sprite.from('./loading.png');
       this._loadingScreen.alpha = 0;
       // ゲーム全体のタイマー初期化
       Game.startTime = Game.dateInstance.getTime();

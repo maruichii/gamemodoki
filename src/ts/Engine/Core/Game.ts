@@ -104,7 +104,7 @@ export class Game {
             this.sceneList = new Map<string, Scene>();  // シーンリスト初期化
             this.activeScene = null;
 
-            this._loadingScreen = PIXI.Sprite.from('/loading.png');
+            this._loadingScreen = PIXI.Sprite.from('./loading.png');
             this._loadingScreen.alpha = 0;
 
             // ゲーム全体のタイマー初期化
