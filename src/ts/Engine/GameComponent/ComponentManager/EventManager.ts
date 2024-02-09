@@ -2,8 +2,6 @@ const { TEXT, ENV } = require('ts/Const');
 import * as Util from 'ts/Util/Util';
 import * as PIXI from 'pixi.js';
 import * as Rx from 'rxjs';
-// import { IObserver } from '../../Core/IObserver';
-import { ISideEffectDispacher } from "../../Core/IEffectDispacher";
 import { SequenceManager } from "./SequenceManager";
 import { Event, EventRepository, FlagEffect, SCRIPT_TYPE, SIDE_EFFECT_TYPE, Script, Sequence, SideEffect, SideEffectBunch } from "../../../Repository/EventRepository";
 import { EventCharaStage } from "../CharaStage";
